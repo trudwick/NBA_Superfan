@@ -1,6 +1,7 @@
 #guide: https://blog.miguelgrinberg.com/post/how-to-create-a-react--flask-project
 #if I have problems: chrome://net-internals/#sockets -> flush
 from flask import Flask, request
+import flask
 from nba_api.stats.static import teams
 from nba_api.stats.static import players
 from nba_api.stats.endpoints import leaguegamefinder
@@ -24,76 +25,61 @@ import time
     run flask:
         flask run
     example url to test with:
-        http://127.0.0.1:5000/from_date?date=2023-01-17
+        http://127.0.0.1:5000/getgames?date=2023-01-17
 """
 
 app = Flask(__name__)
 
-@app.route('/from_date')
-def get_games_from_date():
-    return goodGamesFromDate(request.args.get('date'))
-@app.route('/by_team')
-def get_games_by_team():
-    teamcode=request.args.get('team')
-    numgames=request.args.get('numGames')
-    try:
-        numgames=int(numgames)
-    except:
-        numgames=5
-    return goodGamesByTeamCode(request.args.get('team'),numgames)
+@app.route('/api/getgames', methods=['GET'])
+def get_games_getgames():
+    default_date = str(date.today()-timedelta(days = 1)) #use yesterday
+    start_date = request.args.get('start_date',default= default_date)
+    print('start_date',start_date)
+    end_date = request.args.get('end_date',default=default_date)
+    print('end_date',end_date)
+    num_games = request.args.get('num_games',default= 5, type=int)
+    if num_games>15:
+        num_games=15
+    print('num_games',num_games)
+    teams=request.args.get('teams',default="", type=str)
+    print('teams',teams)
+    response = flask.jsonify(goodGamesFromDate(start_date,end_date,num_games,teams))
+    response.headers.add('Access-Control-Allow-Origin', '*')
+    print(response)
+    return response
 
-def goodGamesFromDate(gameDate):
+def goodGamesFromDate(start_date,end_date,num_games=5,teams=""):
     gamefinder = leaguegamefinder.LeagueGameFinder()
     games = gamefinder.get_data_frames()[0]
 
     # games_2023 = games[] 
-    games_on_date = games.loc[(games['GAME_DATE']==gameDate)  & (games['GAME_ID'].astype(str).str[0]=='0')]
-    # print(games_on_date['GAME_DATE'])
-    games_on_date = games_on_date.drop_duplicates(subset=['GAME_ID'])
-    games_on_date = games_on_date.sort_values('GAME_ID')
-    print("\n\nTotal games on this date:",len(games_on_date))
-    if len(games_on_date)==0:
+    games_filtered = games.loc[(games['GAME_DATE']>=start_date) & (games['GAME_DATE']<=end_date)  & (games['GAME_ID'].astype(str).str[0]=='0')]
+    if teams!="":
+        teamcode_list = teams.split(",")
+        teamcode_list.remove("")
+        games_filtered=games_filtered.loc[(games_filtered["TEAM_ABBREVIATION"].isin(teamcode_list))]
+    # print(games_filtered['GAME_DATE'])
+    games_filtered = games_filtered.drop_duplicates(subset=['GAME_ID'])
+    games_filtered = games_filtered.sort_values('GAME_ID')
+    print("\n\nTotal games on this date:",len(games_filtered))
+    if len(games_filtered)==0:
         print ("No games found on this date :(. Try again!")
         return
-    game_id = games_on_date.sort_values('GAME_ID').iloc[0]['GAME_ID']
+    game_id = games_filtered.sort_values('GAME_ID').iloc[0]['GAME_ID']
 
-    # print(games_on_date.columns)
+    # print(games_filtered.columns)
     good=[]
-    for game_id, team_name in zip(games_on_date['GAME_ID'], games_on_date['TEAM_NAME']):
+    for game_id, team_name in zip(games_filtered['GAME_ID'], games_filtered['TEAM_NAME']):
         teams = games[games["GAME_ID"]==game_id]['TEAM_NAME'].tolist()
         matchup_str={
                         "team1":teams[0],
                         "team2":teams[1],
-                        "date":gameDate,
+                        "date":games['GAME_DATE'],
                         "game_id":game_id
                     }
         if gameIsGood(game_id):
             good.append(matchup_str)
     return good
-
-def goodGamesByTeamCode(teamcode,num_games):
-    gamefinder = leaguegamefinder.LeagueGameFinder()
-    # gamefinder = leaguegamefinder.LeagueGameFinder(date_from_nullable='2023-01-14')
-    # The first DataFrame of those returned is what we want.
-    teamcode_list = teamcode.split(",")
-    games = gamefinder.get_data_frames()[0]
-    nba_games = games.loc[(games['GAME_ID'].astype(str).str[0]=='0') & games["TEAM_ABBREVIATION"].isin(teamcode_list)]
-    filtered_games = nba_games.drop_duplicates(subset=['GAME_ID'])
-    good=[]
-    for game_id, team_name in zip(filtered_games['GAME_ID'], filtered_games['TEAM_NAME']):
-        teams = games[games["GAME_ID"]==game_id]['TEAM_NAME'].tolist()
-        matchup_str={   
-                        "team1":teams[0],
-                        "team2":teams[1],
-                        "date":games[games["GAME_ID"]==game_id].iloc[0]['GAME_DATE'],
-                        "game_id":game_id
-                     }
-        if gameIsGood(game_id):
-            good.append(matchup_str)
-            if len(good)>=num_games:
-                break
-    return good
-
 
 def gameIsGood(game_id):
     pbp = playbyplay.PlayByPlay(game_id).get_data_frames()[0]

@@ -18,22 +18,15 @@
 .navbar .logo{
   color:white;
 }
-.navbar-menu{
+.navbar-menu {
   display: flex;
   list-style-type: none;
-  gap:30px;
-  margin:0px;
-  align-items:center;
+  gap: 30px;
+  margin: 0;
+  align-items: center;
 }
 .navbar-menu a{
   color: white;
-}
-
-
-@media (prefers-reduced-motion: no-preference) {
-  .App-logo {
-    animation: App-logo-spin infinite 20s linear;
-  }
 }
 
 .App-header {
@@ -58,4 +51,49 @@
   to {
     transform: rotate(360deg);
   }
+}
+
+.search{
+  margin: auto;
+  width: 50%;
+  border: 3px solid green;
+  padding: 10px;
+}
+.search-date{
+  text-align: center;
+}
+.buttonHolder{
+  text-align: center;
+}
+.search-teams{
+  text-align: center;
+  width:100%;
+}
+.search-teams tr{
+  text-align: left;
+}
+.search-output{
+  text-align: center;
+}
+
+table,th,td {
+  margin: 0 auto; /* or margin: 0 auto 0 auto */
+  border:2px solid black;
+}
+
+.about-page-style {
+  max-width: '600px';
+  margin: 20px;
+  padding: '20px';
+  text-align: 'center';
+  background-color: '#f5f5f5';
+  border-radius: '10px';
+  box-shadow: '0 0 10px rgba(0, 0, 0, 0.1)';
+}
+.about-ptag{
+  margin-top: 20px;
+}
+.heading-style {
+  color: '#0466fa';
+  margin-bottom: '20px';
 }
