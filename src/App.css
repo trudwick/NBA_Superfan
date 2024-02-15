@@ -97,3 +97,6 @@ table,th,td {
   color: '#0466fa';
   margin-bottom: '20px';
 }
+td{
+  margin: 5px;
+}

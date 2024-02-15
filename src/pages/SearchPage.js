@@ -5,6 +5,10 @@ import $ from 'jquery'
 
 function SearchPage() {
   const [gameData,setGameData] = useState([])
+  const [showGameScore, setShowGameScore] = useState(false);
+  const handleChange = () => {
+    setShowGameScore(!showGameScore);
+  };
   
 
   function handleSubmit(e) {
@@ -48,6 +52,12 @@ function SearchPage() {
         </div>
         
       </form>
+      <div className='buttonHolder'>
+        <label>
+          <input type="checkbox" showGameScore={showGameScore} onChange={handleChange}/>
+          Show Game Score
+        </label>
+      </div>
       <div className="search-output">
         {gameData.length > 0 && (
           <table>
@@ -57,6 +67,7 @@ function SearchPage() {
                 <th>Team 1</th>
                 <th>Team 2</th>
                 <th>NBA.com league pass link</th>
+                {showGameScore?<th>Game Score</th>:""}
               </tr>
             </thead>
             <tbody>
@@ -66,6 +77,7 @@ function SearchPage() {
                   <td>{game.team1}</td>
                   <td>{game.team2}</td>
                   <td><a href={`https://www.nba.com/game/${game.game_id}?watch`} target="_blank" rel="noopener noreferrer">Click to watch game</a></td>
+                  {showGameScore?<td>{game.game_score}</td>:""}
                 </tr>
               ))}
             </tbody>
@@ -80,36 +92,36 @@ function TeamSelect(){
   return (
     <select className="search-teams" id="teams" name="teams" multiple>
       <option value="">Select Teams</option>
-      <option value="ATL">Boston Celtics</option>
-      <option value="BOS">Brooklyn Nets</option>
-      <option value="BKN">New York Knicks</option>
-      <option value="CHA">Philadelphia 76ers</option>
-      <option value="CHI">Toronto Raptors</option>
-      <option value="CLE">Chicago Bulls</option>
-      <option value="DAL">Cleveland Cavaliers</option>
-      <option value="DEN">Detroit Pistons</option>
-      <option value="DET">Indiana Pacers</option>
-      <option value="GSW">Milwaukee Bucks</option>
-      <option value="HOU">Atlanta Hawks</option>
-      <option value="IND">Charlotte Hornets</option>
-      <option value="LAC">Miami Heat</option>
-      <option value="LAL">Orlando Magic</option>
-      <option value="MEM">Washington Wizards</option>
-      <option value="MIA">Denver Nuggets</option>
-      <option value="MIL">Minnesota Timberwolves</option>
-      <option value="MIN">Oklahoma City Thunder</option>
-      <option value="NOP">Portland Trail Blazers</option>
-      <option value="NYK">Utah Jazz</option>
-      <option value="OKC">Golden State Warriors</option>
-      <option value="ORL">LA Clippers</option>
-      <option value="PHI">Los Angeles Lakers</option>
+      <option value="ATL">Atlanta Hawks</option>
+      <option value="BOS">Boston Celtics</option>
+      <option value="BKN">Brooklyn Nets</option>
+      <option value="CHA">Charlotte Hornets</option>
+      <option value="CHI">Chicago Bulls</option>
+      <option value="CLE">Cleveland Cavaliers</option>
+      <option value="DAL">Dallas Mavericks</option>
+      <option value="DEN">Denver Nuggets</option>
+      <option value="DET">Detroit Pistons</option>
+      <option value="GSW">Golden State Warriors</option>
+      <option value="HOU">Houston Rockets</option>
+      <option value="IND">Indiana Pacers</option>
+      <option value="LAC">Los Angelas Clippers</option>
+      <option value="LAL">Los Angeles Lakers</option>
+      <option value="MEM">Memphis Grizzlies</option>
+      <option value="MIA">Miami Heat</option>
+      <option value="MIL">Milwaukee Bucks</option>
+      <option value="MIN">Minnesota Timberwolves</option>
+      <option value="NOP">New Orleans Pelicans</option>
+      <option value="NYK">New York Knicks</option>
+      <option value="OKC">Oklahoma City Thunder</option>
+      <option value="ORL">Orlando Magic</option>
+      <option value="PHI">Philadelphia 76ers</option>
       <option value="PHX">Phoenix Suns</option>
-      <option value="POR">Sacramento Kings</option>
-      <option value="SAC">Dallas Mavericks</option>
-      <option value="SAS">Houston Rockets</option>
-      <option value="TOR">Memphis Grizzlies</option>
-      <option value="UTA">New Orleans Pelicans</option>
-      <option value="WAS">San Antonio Spurs</option>
+      <option value="POR">Portland Trail Blazers</option>
+      <option value="SAC">Sacramento Kings</option>
+      <option value="SAS">San Antonio Spurs</option>
+      <option value="TOR">Toronto Raptors</option>
+      <option value="UTA">Utah Jazz</option>
+      <option value="WAS">Washington Wizards</option>
     </select>
   )
 }

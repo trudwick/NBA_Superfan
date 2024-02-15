@@ -7,9 +7,10 @@ from nba_api.stats.static import players
 from nba_api.stats.endpoints import leaguegamefinder
 from nba_api.stats.endpoints import playbyplay
 from nba_api.live.nba.endpoints import scoreboard
-from datetime import date
-from datetime import timedelta
+from datetime import date,datetime,timedelta
+import mysql.connector
 import time
+import json
 
 """
     activate virtual environment
@@ -29,86 +30,239 @@ import time
 """
 
 app = Flask(__name__)
+host = "localhost"
+user = "root"
+password = ""
+database = "NBA_Superfan"
 
 @app.route('/api/getgames', methods=['GET'])
 def get_games_getgames():
+    """
+        handle arguments:
+            start_date: "YYYY-MM-DD"    (default: yesterday)
+            end_date:   "YYYY-MM-DD"    (default: yesterday)
+            num_games:  int             (default:12)
+            teams:      PHX,WAS,...     (default:"")
+            sort_by:    date,game_score (default:"date")
+    """
     default_date = str(date.today()-timedelta(days = 1)) #use yesterday
     start_date = request.args.get('start_date',default= default_date)
     print('start_date',start_date)
     end_date = request.args.get('end_date',default=default_date)
     print('end_date',end_date)
-    num_games = request.args.get('num_games',default= 5, type=int)
-    if num_games>15:
-        num_games=15
+    num_games = request.args.get('num_games',default= 20, type=int)
+    # if num_games>15:
+    #     num_games=15
     print('num_games',num_games)
     teams=request.args.get('teams',default="", type=str)
     print('teams',teams)
-    response = flask.jsonify(goodGamesFromDate(start_date,end_date,num_games,teams))
+    teams_long = convertTeamsShortToLong(teams)
+    sort_by=request.args.get('sort_by',default="date", type=str)
+    print('sort_by',sort_by)
+    print("INPUTS:",start_date,end_date,num_games,teams,sort_by)
+
+
+    # Establish a connection to the MySQL server
+    conn = mysql.connector.connect(host=host, user=user, password=password, database=database)
+    # Create a cursor object to interact with the database
+    cursor = conn.cursor()
+    fill_dates(conn, cursor, start_date,end_date)
+    
+    # Example query: Select all rows from the NBA_Good_Games table
+    query_p1 = ("SELECT * FROM NBA_Good_Games WHERE \n"
+            "date BETWEEN '{0}' AND '{1}'  \n")
+    query_p2 = "AND ( (team1 in ({2})) OR (team2 in ({2}))) \n"
+    query_p3 = "ORDER BY game_score DESC limit {3}"
+    query = query_p1
+    if teams_long != "":
+        query+=query_p2
+    query+=query_p3
+    query_with_args = query.format(start_date,end_date,str(teams_long)[1:-1],num_games)
+    print(query_with_args)
+    # Execute the query
+    cursor.execute(query_with_args)
+    # Fetch all the rows
+    rows = cursor.fetchall()
+    # Iterate over the rows and print the results
+    result_list = []
+    for row in rows:
+        result_dict = {
+            "date": str(row[1]),  # Convert date to string if needed
+            "game_id": row[2],
+            "team1": row[3],
+            "team2": row[4],
+            "game_score": row[5]  # Add more columns as needed
+        }
+        result_list.append(result_dict)
+    # response = json.dumps(result_list, indent=2)
+    response = response = flask.jsonify(result_list)
+    # print(response)
+
+    # Close the cursor and connection
+    cursor.close()
+    conn.close()
     response.headers.add('Access-Control-Allow-Origin', '*')
     print(response)
     return response
 
-def goodGamesFromDate(start_date,end_date,num_games=5,teams=""):
+def fill_dates(conn, cursor, start_date,end_date):
+    query = "SELECT date FROM Saved_Dates WHERE date BETWEEN '{0}' AND '{1}' ORDER BY date".format(start_date,end_date)
+    # Execute the query
+    cursor.execute(query)
+    # Fetch all the rows
+    saved_dates_rows = cursor.fetchall()
+    saved_dates_rows = [i[0] for i in saved_dates_rows]
+    end_date=datetime.strptime(end_date,'%Y-%m-%d').date()
+    start_date=datetime.strptime(start_date,'%Y-%m-%d').date()
+    day_count = (end_date - start_date).days + 1
+    for single_date in [d for d in (start_date + timedelta(n) for n in range(day_count)) if d <= end_date]:
+        # single_date = single_datetime.date()
+        cur_date = single_date.strftime('%Y-%m-%d')
+        
+        if single_date not in saved_dates_rows:
+            add_date(conn, cursor, cur_date)
+
+def add_date(conn,cursor,game_date):
     gamefinder = leaguegamefinder.LeagueGameFinder()
     games = gamefinder.get_data_frames()[0]
 
-    # games_2023 = games[] 
-    games_filtered = games.loc[(games['GAME_DATE']>=start_date) & (games['GAME_DATE']<=end_date)  & (games['GAME_ID'].astype(str).str[0]=='0')]
-    if teams!="":
-        teamcode_list = teams.split(",")
-        teamcode_list.remove("")
-        games_filtered=games_filtered.loc[(games_filtered["TEAM_ABBREVIATION"].isin(teamcode_list))]
-    # print(games_filtered['GAME_DATE'])
+    games_filtered = games
+    #this next line matches the game date
+    games_filtered = games.loc[(games['GAME_DATE']==game_date) & (games['GAME_ID'].astype(str).str[0]=='0')]
     games_filtered = games_filtered.drop_duplicates(subset=['GAME_ID'])
     games_filtered = games_filtered.sort_values('GAME_ID')
-    print("\n\nTotal games on this date:",len(games_filtered))
-    if len(games_filtered)==0:
-        print ("No games found on this date :(. Try again!")
-        return
-    game_id = games_filtered.sort_values('GAME_ID').iloc[0]['GAME_ID']
 
-    # print(games_filtered.columns)
-    good=[]
-    for game_id, team_name in zip(games_filtered['GAME_ID'], games_filtered['TEAM_NAME']):
-        teams = games[games["GAME_ID"]==game_id]['TEAM_NAME'].tolist()
-        matchup_str={
-                        "team1":teams[0],
-                        "team2":teams[1],
-                        "date":games['GAME_DATE'],
-                        "game_id":game_id
-                    }
-        if gameIsGood(game_id):
-            good.append(matchup_str)
-    return good
+    for game_id in zip(games_filtered['GAME_ID']):  #loop over games
+        game_id_no = game_id[0]
+        game_score = getGameScore(game_id_no)
+        if game_score>0:
+            teams = games[games["GAME_ID"]==game_id_no]['TEAM_NAME'].tolist()
+            matchup_str={
+                "team1":teams[0],
+                "team2":teams[1],
+                "date":games[games["GAME_ID"]==game_id_no].iloc[0]['GAME_DATE'],
+                "game_id":game_id_no,
+                "game_score":game_score
+            }
+            print(matchup_str)
+            insert_game_into_table(conn, cursor, matchup_str)
+    insert_date_into_table(conn,cursor,game_date)
 
-def gameIsGood(game_id):
+def getGameScore(game_id):
+    time.sleep(0.5)
+    print('getting game score for:',game_id)
     pbp = playbyplay.PlayByPlay(game_id).get_data_frames()[0]
-    pbp_q4 = pbp.loc[ (pbp['PERIOD']==4) &(pbp['PCTIMESTRING'].astype(str).str[0]<'4')&(pbp['PCTIMESTRING'].astype(str).str[1]==':')]     # 
+    pbp_q4_and_beyond = pbp.loc[(pbp['PERIOD']>=4) &
+                     (pbp['PCTIMESTRING'].astype(str).str[0]<'5')&
+                     (pbp['PCTIMESTRING'].astype(str).str[1]==':')]
+    pbp_q4_and_beyond=pbp_q4_and_beyond[['PERIOD','PCTIMESTRING','SCOREMARGIN']].dropna().replace("TIE",0)
+    pbp_q4_and_beyond['SCOREMARGIN']=pbp_q4_and_beyond['SCOREMARGIN'].astype(int)
     
-    for play in pbp_q4['SCOREMARGIN']:
-        if play is not None and (play == "TIE" or abs(int(play))<5):
-            return True
-    return False
+    scores_as_list = pbp_q4_and_beyond['SCOREMARGIN'].tolist()
+    for x in range(len(scores_as_list)):
+        if scores_as_list[x]=='TIE':
+            scores_as_list[x]=0
+        else:
+            scores_as_list[x]=int(scores_as_list[x])
+    game_score = 0 #10*(int(pbp['PERIOD'].max())-4)  #10 points per overtime
+    if scores_as_list[0] > 0:
+        up=1
+    elif scores_as_list[0] < 0:
+        up=-1
+    else:
+        up=0
+    for value in scores_as_list:
+        if value==0:
+            if up!=0:
+                game_score+=1
+            up=0
+        elif value>0:
+            if up<=0:
+                game_score+=1
+            up=1
+        else:
+            if up>=0:
+                game_score+=1
+            up=-1
+    for period in range(4,10):
+        for x in range(4,-1,-1):
+            min_for_minutex = 5-abs(pbp_q4_and_beyond[(pbp_q4_and_beyond['PERIOD']==period)&(pbp_q4_and_beyond['PCTIMESTRING'].astype(str).str[0]==str(x))]['SCOREMARGIN'].abs().min())
+            game_score+=max(0,min_for_minutex)
+    return game_score
+
+def insert_game_into_table(conn, cursor, matchup):
+    query = "INSERT IGNORE INTO NBA_Good_Games (date, game_id, team1, team2,game_score) VALUES (%s, %s, %s, %s, %s)"
+    values = (matchup['date'], matchup['game_id'], matchup['team1'], matchup['team2'], matchup['game_score'].item())
+    cursor.execute(query, values)
+    conn.commit()
+
+def insert_date_into_table(conn, cursor, date):
+    query = "INSERT IGNORE INTO Saved_Dates (date) VALUES (%s)"
+    values = (date,)
+    cursor.execute(query, values)
+    conn.commit()
 
 def main():
-    query_type = input("Enter a number 1 through 3:\n1 for by date\n2 for by team\n3 for by huge performance\n")
-    if query_type=='1':
-        game_date = input("Input date in the format YYYY-MM-DD. (leave blank for yesterday):")
-        if game_date=='':
-            game_date=str(date.today()-timedelta(days = 1)) #use yesterday
-        print('Games for date:',game_date)
-        print(goodGamesFromDate(game_date))
-    elif query_type=='2':
-        teamcodes = input("Enter team(s) by 3 letter code, comma seperated. (leave blank for DEN):")
-        if teamcodes=="":
-            teamcodes="DEN"
-        numgames = input("Enter the number of games. (leave blank for 5 by default)")
-        try:
-            numgames=int(numgames)
-        except:
-            numgames=5
-        print(goodGamesByTeamCode(teamcodes,numgames))
+    game_date = input("Input date in the format YYYY-MM-DD. (leave blank for yesterday):")
+    if game_date=='':
+        game_date=str(date.today()-timedelta(days = 1)) #use yesterday
+    print('Games for date:',game_date)
+    print(goodGamesFromDate(conn,cursor,game_date))
+
+def insert_game_into_good_games_table(conn,cursor,matchup):
+    try:
+
+        # Insert the game into the MySQL table
+        query = "INSERT INTO NBA_Good_Games (date, game_id, team1, team2, game_score) VALUES (%s, %s, %s, %s, %s)"
+        values = (matchup["date"], matchup["game_id"], matchup["team1"], matchup["team2"], 0)  # Assuming initial game_score is 0
+        cursor.execute(query, values)
+
+        conn.commit()
+        print("Game inserted into the table successfully")
+
+    except mysql.connector.Error as err:
+        print(f"Error: {err}")
+
+def convertTeamsShortToLong(teams_short):
+    teams_short=teams_short.split(",")
+    print(teams_short)
+    if "" in teams_short:
+        return ""
+    teams_long = []
+    teams_map = {}
+    teams_map["ATL"] = "Atlanta Hawks"
+    teams_map["BOS"] = "Boston Celtics"
+    teams_map["BKN"] = "Brooklyn Nets"
+    teams_map["CHA"] = "Charlotte Hornets"
+    teams_map["CHI"] = "Chicago Bulls"
+    teams_map["CLE"] = "Cleveland Cavaliers"
+    teams_map["DAL"] = "Dallas Mavericks"
+    teams_map["DEN"] = "Denver Nuggets"
+    teams_map["DET"] = "Detroit Pistons"
+    teams_map["GSW"] = "Golden State Warriors"
+    teams_map["HOU"] = "Houston Rockets"
+    teams_map["IND"] = "Indiana Pacers"
+    teams_map["LAC"] = "Los Angelas Clippers"
+    teams_map["LAL"] = "Los Angeles Lakers"
+    teams_map["MEM"] = "Memphis Grizzlies"
+    teams_map["MIA"] = "Miami Heat"
+    teams_map["MIL"] = "Milwaukee Bucks"
+    teams_map["MIN"] = "Minnesota Timberwolves"
+    teams_map["NOP"] = "New Orleans Pelicans"
+    teams_map["NYK"] = "New York Knicks"
+    teams_map["OKC"] = "Oklahoma City Thunder"
+    teams_map["ORL"] = "Orlando Magic"
+    teams_map["PHI"] = "Philadelphia 76ers"
+    teams_map["PHX"] = "Phoenix Suns"
+    teams_map["POR"] = "Portland Trail Blazers"
+    teams_map["SAC"] = "Sacramento Kings"
+    teams_map["SAS"] = "San Antonio Spurs"
+    teams_map["TOR"] = "Toronto Raptors"
+    teams_map["UTA"] = "Utah Jazz"
+    teams_map["WAS"] = "Washington Wizards"
+    for team in teams_short:
+        teams_long.append(teams_map[team])
+    return teams_long
 
 if __name__ == "__main__":
     main()
-    # print(scoreboard.ScoreBoard().get_json())
