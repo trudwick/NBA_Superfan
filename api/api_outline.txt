@@ -1,0 +1,45 @@
+API Endpoint:
+get_games_getgames:
+    1. set up arguments:
+        start_date, end_date, num_games, teams, sort_by
+    2. initialize conn and 
+    3. fill in dates in range start_date,end_date, making sure they're in Saved_Dates table
+        calls fill_dates
+    4. query dates
+        call goodGamesFromDate
+            passes in conn,cursor,start_date,end_date,num_games,teams, sort_by
+            returns JSON Array:
+                    "team1"
+                    "team2"
+                    "date"
+                    "game_id"
+
+fill_dates(conn, cursor, start_date,end_date)
+    takes in: conn and cursor from get_games
+    Note: start_date and end_date are STRINGS.
+    1. queries Saved_Dates table
+    2. loops over each date, and calls add_date on each missing date
+
+add_date(conn,cursor,game_date):
+    takes in: conn and cursor from fill_dates
+    1. uses gamefinder to get all games on matching date
+    2. loops over each game on date:
+        if it is good (call getGameScore on game_id, check if it is > 0)
+            add game to insert_game_into_good_games_table
+    3. add current date into Saved_Dates
+
+getGameScore(game_id)
+    uses playbyplay.PlayByPlay to get the play by play
+    return the gameScore:
+    GameScore is calculated as follows:
+        for each minute from 4 to 0:
+            Max of:
+                5-gameDifference, min of 0
+            1 point for every tie or lead change
+        additional 10 points per overtime
+
+goodGamesFromDate(conn,cursor,start_date,end_date,num_games=5,teams="", sort_by="Game_Score")
+    takes in conn and cursor for SQL query
+    query NBA_Good_Games making sure at least one of the teams matches
+    Sort by gameScore, descending
+    return the top num_games responses

@@ -30,6 +30,12 @@ import json
 """
 
 app = Flask(__name__)
+# On pythonanywhere:
+# host = "trudwick.mysql.pythonanywhere-services.com"
+# user = "trudwick"
+# password = "tmr_sql_pw"
+# database = "trudwick$default"
+# # local:
 host = "localhost"
 user = "root"
 password = ""
@@ -106,6 +112,7 @@ def get_games_getgames():
     return response
 
 def fill_dates(conn, cursor, start_date,end_date):
+    print("fill_dates")
     query = "SELECT date FROM Saved_Dates WHERE date BETWEEN '{0}' AND '{1}' ORDER BY date".format(start_date,end_date)
     # Execute the query
     cursor.execute(query)
@@ -120,6 +127,8 @@ def fill_dates(conn, cursor, start_date,end_date):
         cur_date = single_date.strftime('%Y-%m-%d')
         
         if single_date not in saved_dates_rows:
+            print('single_date')
+            print(single_date)
             add_date(conn, cursor, cur_date)
 
 def add_date(conn,cursor,game_date):
@@ -134,6 +143,8 @@ def add_date(conn,cursor,game_date):
 
     for game_id in zip(games_filtered['GAME_ID']):  #loop over games
         game_id_no = game_id[0]
+        print('our game')
+        
         game_score = getGameScore(game_id_no)
         if game_score>0:
             teams = games[games["GAME_ID"]==game_id_no]['TEAM_NAME'].tolist()
@@ -158,20 +169,33 @@ def getGameScore(game_id):
     pbp_q4_and_beyond=pbp_q4_and_beyond[['PERIOD','PCTIMESTRING','SCOREMARGIN']].dropna().replace("TIE",0)
     pbp_q4_and_beyond['SCOREMARGIN']=pbp_q4_and_beyond['SCOREMARGIN'].astype(int)
     
-    scores_as_list = pbp_q4_and_beyond['SCOREMARGIN'].tolist()
-    for x in range(len(scores_as_list)):
-        if scores_as_list[x]=='TIE':
-            scores_as_list[x]=0
-        else:
-            scores_as_list[x]=int(scores_as_list[x])
-    game_score = 0 #10*(int(pbp['PERIOD'].max())-4)  #10 points per overtime
-    if scores_as_list[0] > 0:
+    scores_as_list = pbp_q4_and_beyond.values.tolist()
+    if len(scores_as_list) == 0:    #weird games that don't have fourth quarters or any scoring in last 5 minutes
+        return 0
+    game_score = 0
+    if scores_as_list[0][2] > 0:
         up=1
-    elif scores_as_list[0] < 0:
+    elif scores_as_list[0][2] < 0:
         up=-1
     else:
         up=0
-    for value in scores_as_list:
+    by_minute={}
+    for pd in range(4,pbp['PERIOD'].max()+1):
+        by_minute[pd]=[5,5,5,5,5]
+    print(by_minute)
+    for x in scores_as_list:
+        print(x)
+    for x in range(1,len(scores_as_list)):  #format: period, PCTIMESTRING, margin
+        x_pd = scores_as_list[x][0]
+        x_minute = int(scores_as_list[x][1][0])
+        if scores_as_list[x][1][0]!=scores_as_list[x-1][1][0]:
+            by_minute[x_pd][x_minute]=abs(scores_as_list[x-1][2])
+        by_minute[x_pd][x_minute]=min(by_minute[x_pd][x_minute],abs(scores_as_list[x][2]))
+    for x in by_minute:
+        for closest in by_minute[x]:
+            game_score+=max(0,5-closest)
+    for row in scores_as_list:  #format: period, PCTIMESTRING, margin
+        value = row[2]
         if value==0:
             if up!=0:
                 game_score+=1
@@ -184,15 +208,11 @@ def getGameScore(game_id):
             if up>=0:
                 game_score+=1
             up=-1
-    for period in range(4,10):
-        for x in range(4,-1,-1):
-            min_for_minutex = 5-abs(pbp_q4_and_beyond[(pbp_q4_and_beyond['PERIOD']==period)&(pbp_q4_and_beyond['PCTIMESTRING'].astype(str).str[0]==str(x))]['SCOREMARGIN'].abs().min())
-            game_score+=max(0,min_for_minutex)
     return game_score
 
 def insert_game_into_table(conn, cursor, matchup):
     query = "INSERT IGNORE INTO NBA_Good_Games (date, game_id, team1, team2,game_score) VALUES (%s, %s, %s, %s, %s)"
-    values = (matchup['date'], matchup['game_id'], matchup['team1'], matchup['team2'], matchup['game_score'].item())
+    values = (matchup['date'], matchup['game_id'], matchup['team1'], matchup['team2'], matchup['game_score'])
     cursor.execute(query, values)
     conn.commit()
 
@@ -206,8 +226,6 @@ def main():
     game_date = input("Input date in the format YYYY-MM-DD. (leave blank for yesterday):")
     if game_date=='':
         game_date=str(date.today()-timedelta(days = 1)) #use yesterday
-    print('Games for date:',game_date)
-    print(goodGamesFromDate(conn,cursor,game_date))
 
 def insert_game_into_good_games_table(conn,cursor,matchup):
     try:
@@ -218,7 +236,7 @@ def insert_game_into_good_games_table(conn,cursor,matchup):
         cursor.execute(query, values)
 
         conn.commit()
-        print("Game inserted into the table successfully")
+        # print("Game inserted into the table successfully")
 
     except mysql.connector.Error as err:
         print(f"Error: {err}")
