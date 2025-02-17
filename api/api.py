@@ -93,11 +93,11 @@ def get_games_getgames():
     result_list = []
     for row in rows:
         result_dict = {
-            "date": str(row[1]),  # Convert date to string if needed
-            "game_id": row[2],
-            "team1": row[3],
-            "team2": row[4],
-            "game_score": row[5]  # Add more columns as needed
+            "date": str(row[0]),  # Convert date to string if needed
+            "game_id": row[1],
+            "team1": row[2],
+            "team2": row[3],
+            "game_score": row[4]  # Add more columns as needed
         }
         result_list.append(result_dict)
     # response = json.dumps(result_list, indent=2)
@@ -134,6 +134,7 @@ def fill_dates(conn, cursor, start_date,end_date):
 def add_date(conn,cursor,game_date):
     gamefinder = leaguegamefinder.LeagueGameFinder()
     games = gamefinder.get_data_frames()[0]
+    print(games)
 
     games_filtered = games
     #this next line matches the game date
